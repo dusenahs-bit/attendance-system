@@ -29,22 +29,21 @@ export default function ScanPage() {
     supabase.from('events').select('name').eq('id', id).single().then(({ data }) => {
       if (data) setEventName(data.name)
     })
-    // 페이지 진입 시 포커스
     setTimeout(() => inputRef.current?.focus(), 100)
   }, [id])
 
-  // 인풋이 포커스를 잃으면 즉시 되돌림
-  const handleBlur = useCallback(() => {
-    setTimeout(() => inputRef.current?.focus(), 10)
+  // 500ms마다 포커스 강제 유지
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.activeElement !== inputRef.current && !document.hidden) {
+        inputRef.current?.focus()
+      }
+    }, 500)
+    return () => clearInterval(interval)
   }, [])
 
-  // 탭 전환 후 돌아왔을 때 포커스 복귀
-  useEffect(() => {
-    const onVisible = () => {
-      if (!document.hidden) setTimeout(() => inputRef.current?.focus(), 100)
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+  const handleBlur = useCallback(() => {
+    setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
   const processScan = useCallback(async (barcode: string) => {
