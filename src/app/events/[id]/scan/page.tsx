@@ -33,24 +33,18 @@ export default function ScanPage() {
     setTimeout(() => inputRef.current?.focus(), 100)
   }, [id])
 
-  // 포커스가 인풋에서 벗어나면 자동으로 되돌림
+  // 인풋이 포커스를 잃으면 즉시 되돌림
+  const handleBlur = useCallback(() => {
+    setTimeout(() => inputRef.current?.focus(), 10)
+  }, [])
+
+  // 탭 전환 후 돌아왔을 때 포커스 복귀
   useEffect(() => {
-    const keepFocus = () => {
-      // 링크 등 다른 요소 클릭 시엔 포커스 이동 허용
-      if (document.activeElement !== inputRef.current) {
-        inputRef.current?.focus()
-      }
-    }
-    // visibilitychange: 탭 전환 후 돌아왔을 때도 포커스
     const onVisible = () => {
       if (!document.hidden) setTimeout(() => inputRef.current?.focus(), 100)
     }
-    document.addEventListener('click', keepFocus)
     document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      document.removeEventListener('click', keepFocus)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   const processScan = useCallback(async (barcode: string) => {
@@ -143,6 +137,7 @@ export default function ScanPage() {
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
           disabled={processing}
           className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
           placeholder="바코드를 스캔하세요..."
