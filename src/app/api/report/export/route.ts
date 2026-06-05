@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
   const participantMap = new Map(participants.map(p => [p.barcode, p]))
 
   // 스캔된 모든 고유 바코드 수집
-  const scannedBarcodes = [...new Set(logs.map(l => l.barcode))]
+  const scannedBarcodes = Array.from(new Set(logs.map(l => l.barcode)))
 
   // 참가자 기준 rows (번호 순서 유지)
   const reportRows: {
