@@ -93,7 +93,7 @@ export default function ReportPage() {
 
     // 명단에 없지만 스캔된 바코드 추가
     const participantBarcodes = new Set(participants.map(p => p.barcode))
-    const scannedBarcodes = [...new Set(logs.map(l => l.barcode))]
+    const scannedBarcodes = Array.from(new Set(logs.map(l => l.barcode)))
     scannedBarcodes.forEach(barcode => {
       if (participantBarcodes.has(barcode)) return
       const pLogs = logs.filter(l => l.barcode === barcode)
