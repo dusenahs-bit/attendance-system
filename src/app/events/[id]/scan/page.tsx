@@ -29,14 +29,28 @@ export default function ScanPage() {
     supabase.from('events').select('name').eq('id', id).single().then(({ data }) => {
       if (data) setEventName(data.name)
     })
-    inputRef.current?.focus()
+    // 페이지 진입 시 포커스
+    setTimeout(() => inputRef.current?.focus(), 100)
   }, [id])
 
-  // 클릭하면 항상 인풋에 포커스
+  // 포커스가 인풋에서 벗어나면 자동으로 되돌림
   useEffect(() => {
-    const handler = () => inputRef.current?.focus()
-    document.addEventListener('click', handler)
-    return () => document.removeEventListener('click', handler)
+    const keepFocus = () => {
+      // 링크 등 다른 요소 클릭 시엔 포커스 이동 허용
+      if (document.activeElement !== inputRef.current) {
+        inputRef.current?.focus()
+      }
+    }
+    // visibilitychange: 탭 전환 후 돌아왔을 때도 포커스
+    const onVisible = () => {
+      if (!document.hidden) setTimeout(() => inputRef.current?.focus(), 100)
+    }
+    document.addEventListener('click', keepFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      document.removeEventListener('click', keepFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   const processScan = useCallback(async (barcode: string) => {
