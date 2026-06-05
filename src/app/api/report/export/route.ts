@@ -10,6 +10,41 @@ function minutesToHHMM(minutes: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `0:${String(m).padStart(2, '0')}`
 }
 
+function calcStats(pLogs: ScanLog[], now: Date) {
+  let inside_ms = 0
+  let outside_ms = 0
+  let entry_time: Date | null = null
+
+  for (let i = 0; i < pLogs.length; i++) {
+    const log = pLogs[i]
+    const t = new Date(log.scanned_at)
+    if (log.scan_type === '입장' || log.scan_type === '재입장') {
+      entry_time = t
+      if (i > 0 && pLogs[i - 1].scan_type === '퇴장') {
+        outside_ms += t.getTime() - new Date(pLogs[i - 1].scanned_at).getTime()
+      }
+    } else if (log.scan_type === '퇴장' && entry_time) {
+      inside_ms += t.getTime() - entry_time.getTime()
+      entry_time = null
+    }
+  }
+
+  const lastLog = pLogs[pLogs.length - 1]
+  const status = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
+  if (status === '내부' && entry_time) {
+    inside_ms += now.getTime() - entry_time.getTime()
+  }
+
+  return {
+    status,
+    first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null,
+    last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null,
+    inside_minutes: Math.round(inside_ms / 60000),
+    outside_minutes: Math.round(outside_ms / 60000),
+    scan_count: pLogs.length,
+  }
+}
+
 export async function GET(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,46 +64,41 @@ export async function GET(req: NextRequest) {
   const logs: ScanLog[] = logsRes.data || []
   const now = new Date()
 
-  // 체류시간 계산
-  const reportRows = participants.map(p => {
+  // 참가자 map
+  const participantMap = new Map(participants.map(p => [p.barcode, p]))
+
+  // 스캔된 모든 고유 바코드 수집
+  const scannedBarcodes = [...new Set(logs.map(l => l.barcode))]
+
+  // 참가자 기준 rows (번호 순서 유지)
+  const reportRows: {
+    number: number | string
+    name: string
+    organization: string
+    barcode: string
+    status: string
+    first_entry: string | null
+    last_exit: string | null
+    inside_minutes: number
+    outside_minutes: number
+    scan_count: number
+  }[] = []
+
+  // 등록된 참가자
+  participants.forEach(p => {
     const pLogs = logs.filter(l => l.barcode === p.barcode)
     if (pLogs.length === 0) {
-      return { ...p, status: '미입장', first_entry: null, last_exit: null, inside_minutes: 0, outside_minutes: 0, scan_count: 0 }
+      reportRows.push({ number: p.number, name: p.name, organization: p.organization, barcode: p.barcode, status: '미입장', first_entry: null, last_exit: null, inside_minutes: 0, outside_minutes: 0, scan_count: 0 })
+    } else {
+      reportRows.push({ number: p.number, name: p.name, organization: p.organization, barcode: p.barcode, ...calcStats(pLogs, now) })
     }
+  })
 
-    let inside_ms = 0
-    let outside_ms = 0
-    let entry_time: Date | null = null
-
-    for (let i = 0; i < pLogs.length; i++) {
-      const log = pLogs[i]
-      const t = new Date(log.scanned_at)
-      if (log.scan_type === '입장' || log.scan_type === '재입장') {
-        entry_time = t
-        if (i > 0 && pLogs[i - 1].scan_type === '퇴장') {
-          outside_ms += t.getTime() - new Date(pLogs[i - 1].scanned_at).getTime()
-        }
-      } else if (log.scan_type === '퇴장' && entry_time) {
-        inside_ms += t.getTime() - entry_time.getTime()
-        entry_time = null
-      }
-    }
-
-    const lastLog = pLogs[pLogs.length - 1]
-    const status = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
-    if (status === '내부' && entry_time) {
-      inside_ms += now.getTime() - entry_time.getTime()
-    }
-
-    return {
-      ...p,
-      status,
-      first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null,
-      last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null,
-      inside_minutes: Math.round(inside_ms / 60000),
-      outside_minutes: Math.round(outside_ms / 60000),
-      scan_count: pLogs.length,
-    }
+  // 명단에 없지만 스캔된 바코드 추가
+  scannedBarcodes.forEach(barcode => {
+    if (participantMap.has(barcode)) return // 이미 위에서 처리
+    const pLogs = logs.filter(l => l.barcode === barcode)
+    reportRows.push({ number: '-', name: '미등록', organization: '', barcode, ...calcStats(pLogs, now) })
   })
 
   // 엑셀 생성
@@ -88,7 +118,6 @@ export async function GET(req: NextRequest) {
     { header: '스캔횟수', key: 'scan_count', width: 10 },
   ]
 
-  // 헤더 스타일
   ws.getRow(1).eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }
@@ -112,7 +141,6 @@ export async function GET(req: NextRequest) {
     })
   })
 
-  // 행 색상
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
     row.eachCell(cell => {

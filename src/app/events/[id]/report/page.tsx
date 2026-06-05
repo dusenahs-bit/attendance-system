@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { Participant, ScanLog } from '@/types'
 
 interface ParticipantReport {
-  number: number
+  number: number | string
   name: string
   organization: string
   barcode: string
@@ -89,6 +89,29 @@ export default function ReportPage() {
         outside_minutes: Math.round(outside_ms / 60000),
         scan_count: pLogs.length,
       }
+    })
+
+    // 명단에 없지만 스캔된 바코드 추가
+    const participantBarcodes = new Set(participants.map(p => p.barcode))
+    const scannedBarcodes = [...new Set(logs.map(l => l.barcode))]
+    scannedBarcodes.forEach(barcode => {
+      if (participantBarcodes.has(barcode)) return
+      const pLogs = logs.filter(l => l.barcode === barcode)
+      const lastLog = pLogs[pLogs.length - 1]
+      const currentStatus: '내부' | '외부' = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
+      let inside_ms = 0, outside_ms = 0
+      let entry_time: Date | null = null
+      for (let i = 0; i < pLogs.length; i++) {
+        const t = new Date(pLogs[i].scanned_at)
+        if (pLogs[i].scan_type === '입장' || pLogs[i].scan_type === '재입장') {
+          entry_time = t
+          if (i > 0 && pLogs[i-1].scan_type === '퇴장') outside_ms += t.getTime() - new Date(pLogs[i-1].scanned_at).getTime()
+        } else if (pLogs[i].scan_type === '퇴장' && entry_time) {
+          inside_ms += t.getTime() - entry_time.getTime(); entry_time = null
+        }
+      }
+      if (currentStatus === '내부' && entry_time) inside_ms += now.getTime() - entry_time.getTime()
+      result.push({ number: '-', name: '미등록', organization: '', barcode, status: currentStatus, first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null, last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null, inside_minutes: Math.round(inside_ms/60000), outside_minutes: Math.round(outside_ms/60000), scan_count: pLogs.length })
     })
 
     setReports(result)
