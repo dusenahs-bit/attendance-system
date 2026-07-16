@@ -28,6 +28,7 @@ function minutesToHHMM(minutes: number): string {
 export default function ReportPage() {
   const { id } = useParams<{ id: string }>()
   const [eventName, setEventName] = useState('')
+  const [eventDate, setEventDate] = useState('')
   const [reports, setReports] = useState<ParticipantReport[]>([])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
@@ -112,8 +113,8 @@ export default function ReportPage() {
   }, [id])
 
   useEffect(() => {
-    supabase.from('events').select('name').eq('id', id).single().then(({ data }) => {
-      if (data) setEventName(data.name)
+    supabase.from('events').select('name,date').eq('id', id).single().then(({ data }) => {
+      if (data) { setEventName(data.name); setEventDate(data.date) }
     })
     buildReports()
   }, [id, buildReports])
@@ -149,7 +150,7 @@ export default function ReportPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900">체류시간 리포트</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{eventName}</p>
+          <p className="text-sm text-gray-500 mt-0.5">{eventName}{eventDate && <span className="ml-2 text-gray-400">· {eventDate}</span>}</p>
         </div>
         <div className="flex gap-2">
           <button

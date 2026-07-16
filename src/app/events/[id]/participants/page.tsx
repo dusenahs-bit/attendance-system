@@ -11,6 +11,7 @@ const emptyForm = { number: '', name: '', organization: '', barcode: '' }
 export default function ParticipantsPage() {
   const { id } = useParams<{ id: string }>()
   const [eventName, setEventName] = useState('')
+  const [eventDate, setEventDate] = useState('')
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -33,8 +34,8 @@ export default function ParticipantsPage() {
   }, [id])
 
   useEffect(() => {
-    supabase.from('events').select('name').eq('id', id).single().then(({ data }) => {
-      if (data) setEventName(data.name)
+    supabase.from('events').select('name,date').eq('id', id).single().then(({ data }) => {
+      if (data) { setEventName(data.name); setEventDate(data.date) }
     })
     loadParticipants()
   }, [id, loadParticipants])
@@ -121,7 +122,7 @@ export default function ParticipantsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900">참가자 명단</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{eventName}</p>
+          <p className="text-sm text-gray-500 mt-0.5">{eventName}{eventDate && <span className="ml-2 text-gray-400">· {eventDate}</span>}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">{participants.length}명</span>
