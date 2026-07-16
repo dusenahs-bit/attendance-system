@@ -155,6 +155,8 @@ export async function GET(req: NextRequest) {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`체류시간_리포트_${event?.name || ''}.xlsx`)}`,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
     },
   })
 }
