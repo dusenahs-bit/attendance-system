@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     cell.alignment = { horizontal: 'center' }
   })
 
-  const fmt = (dt: string | null) => dt ? new Date(dt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'
+  const fmt = (dt: string | null) => dt ? new Date(dt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' }) : '-'
 
   reportRows.forEach(r => {
     ws.addRow({
