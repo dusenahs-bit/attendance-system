@@ -42,12 +42,12 @@ function calcStats(pLogs: ScanLog[], now: Date = new Date()) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
-  const event_id = req.nextUrl.searchParams.get('event_id')
+  const { event_id } = await req.json()
   if (!event_id) return NextResponse.json({ error: 'event_id required' }, { status: 400 })
 
   const [eventRes, participantsRes, logsRes] = await Promise.all([

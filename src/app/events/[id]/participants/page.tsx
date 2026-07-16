@@ -179,7 +179,11 @@ export default function ParticipantsPage() {
   async function downloadExcel() {
     setDownloading(true)
     try {
-      const res = await fetch(`/api/report/export?event_id=${id}&t=${Date.now()}`)
+      const res = await fetch('/api/report/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: id }),
+      })
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
