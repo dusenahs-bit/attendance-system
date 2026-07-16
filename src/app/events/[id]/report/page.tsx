@@ -68,7 +68,11 @@ export default function ReportPage() {
         }
       }
 
-      // 진행 중인 세션은 계산 제외 (시간 무한 누적 방지)
+      // 현재 내부에 있는 경우 지금까지의 시간도 포함
+      if (entry_time !== null) {
+        inside_ms += Date.now() - entry_time.getTime()
+      }
+
       const lastLog = pLogs[pLogs.length - 1]
       const currentStatus: '내부' | '외부' = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
 
@@ -104,6 +108,9 @@ export default function ReportPage() {
         } else if (pLogs[i].scan_type === '퇴장' && entry_time) {
           inside_ms += t.getTime() - entry_time.getTime(); entry_time = null
         }
+      }
+      if (entry_time !== null) {
+        inside_ms += Date.now() - entry_time.getTime()
       }
       result.push({ number: '-', name: '미등록', organization: '', barcode, status: currentStatus, first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null, last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null, inside_minutes: Math.round(inside_ms/60000), outside_minutes: Math.round(outside_ms/60000), scan_count: pLogs.length })
     })

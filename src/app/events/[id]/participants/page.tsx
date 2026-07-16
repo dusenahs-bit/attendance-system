@@ -4,18 +4,70 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
-import { Participant } from '@/types'
+import { Participant, ScanLog, ScanType } from '@/types'
 
 const emptyForm = { number: '', name: '', organization: '', barcode: '' }
+
+interface ParticipantRow extends Participant {
+  status: '내부' | '외부' | '미입장'
+  first_entry: string | null
+  last_exit: string | null
+  inside_minutes: number
+  outside_minutes: number
+  scan_count: number
+}
+
+function calcStats(pLogs: ScanLog[]) {
+  let inside_ms = 0
+  let outside_ms = 0
+  let entry_time: Date | null = null
+
+  for (let i = 0; i < pLogs.length; i++) {
+    const t = new Date(pLogs[i].scanned_at)
+    if (pLogs[i].scan_type === '입장' || pLogs[i].scan_type === '재입장') {
+      entry_time = t
+      if (i > 0 && pLogs[i - 1].scan_type === '퇴장') {
+        outside_ms += t.getTime() - new Date(pLogs[i - 1].scanned_at).getTime()
+      }
+    } else if (pLogs[i].scan_type === '퇴장' && entry_time) {
+      inside_ms += t.getTime() - entry_time.getTime()
+      entry_time = null
+    }
+  }
+
+  // 현재 내부에 있는 경우 지금까지의 시간도 포함
+  if (entry_time !== null) {
+    inside_ms += Date.now() - entry_time.getTime()
+  }
+
+  const lastLog = pLogs[pLogs.length - 1]
+  const status: '내부' | '외부' = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
+  return {
+    status,
+    first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null,
+    last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null,
+    inside_minutes: Math.round(inside_ms / 60000),
+    outside_minutes: Math.round(outside_ms / 60000),
+    scan_count: pLogs.length,
+  }
+}
+
+function minutesToHHMM(m: number) {
+  const h = Math.floor(m / 60)
+  const min = m % 60
+  return h > 0 ? `${h}시간 ${min}분` : `${min}분`
+}
 
 export default function ParticipantsPage() {
   const { id } = useParams<{ id: string }>()
   const [eventName, setEventName] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [rows, setRows] = useState<ParticipantRow[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
+  const [downloading, setDownloading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -23,13 +75,23 @@ export default function ParticipantsPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
-  const loadParticipants = useCallback(async () => {
-    const { data } = await supabase
-      .from('participants')
-      .select('*')
-      .eq('event_id', id)
-      .order('number')
-    setParticipants(data || [])
+  const loadData = useCallback(async () => {
+    const [pRes, lRes] = await Promise.all([
+      supabase.from('participants').select('*').eq('event_id', id).order('number'),
+      supabase.from('scan_logs').select('*').eq('event_id', id).order('scanned_at', { ascending: true }),
+    ])
+    const pList: Participant[] = pRes.data || []
+    const logs: ScanLog[] = lRes.data || []
+    setParticipants(pList)
+
+    const computed: ParticipantRow[] = pList.map(p => {
+      const pLogs = logs.filter(l => l.barcode === p.barcode)
+      if (pLogs.length === 0) {
+        return { ...p, status: '미입장', first_entry: null, last_exit: null, inside_minutes: 0, outside_minutes: 0, scan_count: 0 }
+      }
+      return { ...p, ...calcStats(pLogs) }
+    })
+    setRows(computed)
     setLoading(false)
   }, [id])
 
@@ -37,8 +99,8 @@ export default function ParticipantsPage() {
     supabase.from('events').select('name,date').eq('id', id).single().then(({ data }) => {
       if (data) { setEventName(data.name); setEventDate(data.date) }
     })
-    loadParticipants()
-  }, [id, loadParticipants])
+    loadData()
+  }, [id, loadData])
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -53,7 +115,7 @@ export default function ParticipantsPage() {
       const result = await res.json()
       if (res.ok) {
         setUploadMsg(`✓ ${result.count}명 업로드 완료`)
-        loadParticipants()
+        loadData()
       } else {
         setUploadMsg(`오류: ${result.error}`)
       }
@@ -85,7 +147,7 @@ export default function ParticipantsPage() {
     setForm(emptyForm)
     setShowAddForm(false)
     setEditId(null)
-    loadParticipants()
+    loadData()
   }
 
   function startEdit(p: Participant) {
@@ -104,17 +166,42 @@ export default function ParticipantsPage() {
   async function deleteParticipant(pid: string) {
     if (!confirm('이 참가자를 삭제하시겠습니까?')) return
     await supabase.from('participants').delete().eq('id', pid)
-    loadParticipants()
+    loadData()
   }
 
   async function clearParticipants() {
     if (!confirm('참가자 명단을 모두 삭제하시겠습니까?')) return
     await supabase.from('participants').delete().eq('event_id', id)
-    loadParticipants()
+    loadData()
   }
 
+  async function downloadExcel() {
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/report/export?event_id=${id}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `체류시간_리포트_${eventName}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const statusColor: Record<string, string> = {
+    '내부': 'bg-green-100 text-green-700',
+    '외부': 'bg-red-100 text-red-700',
+    '미입장': 'bg-gray-100 text-gray-500',
+  }
+
+  const fmtTime = (dt: string | null) =>
+    dt ? new Date(dt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
       <div className="flex items-center gap-2 mb-6">
         <Link href={`/events/${id}`} className="text-sm text-gray-500 hover:text-gray-700">← 대시보드</Link>
       </div>
@@ -124,8 +211,21 @@ export default function ParticipantsPage() {
           <h1 className="text-xl font-bold text-gray-900">참가자 명단</h1>
           <p className="text-sm text-gray-500 mt-0.5">{eventName}{eventDate && <span className="ml-2 text-gray-400">· {eventDate}</span>}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500">{participants.length}명</span>
+          <button
+            onClick={loadData}
+            className="border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50"
+          >
+            새로고침
+          </button>
+          <button
+            onClick={downloadExcel}
+            disabled={downloading}
+            className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 font-medium"
+          >
+            {downloading ? '다운로드 중...' : '엑셀 다운로드'}
+          </button>
           <button
             onClick={() => { setShowAddForm(true); setEditId(null); setForm(emptyForm) }}
             className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 font-medium"
@@ -232,30 +332,48 @@ export default function ParticipantsPage() {
         </div>
         {loading ? (
           <div className="text-center py-8 text-gray-400 text-sm">로딩 중...</div>
-        ) : participants.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="text-center py-8 text-gray-400 text-sm">명단이 없습니다. 개별 추가하거나 엑셀을 업로드하세요.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">번호</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">이름</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">소속</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">바코드</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500"></th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">번호</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">이름</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">소속</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">현재상태</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">최초입장</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">최종퇴장</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">내부체류</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">외부체류</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500">스캔</th>
+                  <th className="px-3 py-2.5 text-xs font-medium text-gray-500"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {participants.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-500">{p.number}</td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{p.name}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{p.organization}</td>
-                    <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{p.barcode}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => startEdit(p)} className="text-xs text-blue-500 hover:text-blue-700 mr-2">수정</button>
-                      <button onClick={() => deleteParticipant(p.id)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
+                {rows.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-500">{r.number}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900">{r.name}</td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{r.organization}</td>
+                    <td className="px-3 py-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[r.status]}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.first_entry)}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.last_exit)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-700 text-xs">
+                      {r.inside_minutes > 0 ? minutesToHHMM(r.inside_minutes) : '-'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-500 text-xs">
+                      {r.outside_minutes > 0 ? minutesToHHMM(r.outside_minutes) : '-'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-400 text-xs">{r.scan_count}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button onClick={() => startEdit(r)} className="text-xs text-blue-500 hover:text-blue-700 mr-2">수정</button>
+                      <button onClick={() => deleteParticipant(r.id)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
                     </td>
                   </tr>
                 ))}
