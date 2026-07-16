@@ -161,12 +161,6 @@ export default function HomePage() {
                 >
                   참가자
                 </Link>
-                <Link
-                  href={`/events/${event.id}/report`}
-                  className="flex-1 text-center bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-200 font-medium"
-                >
-                  리포트
-                </Link>
               </div>
             </div>
           ))}
