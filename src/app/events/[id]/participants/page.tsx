@@ -176,6 +176,21 @@ export default function ParticipantsPage() {
     loadData()
   }
 
+  async function forceExit(barcode: string) {
+    await supabase.from('scan_logs').insert({ event_id: id, barcode, scan_type: '퇴장' })
+    loadData()
+  }
+
+  async function forceExitAll() {
+    const insideRows = rows.filter(r => r.status === '내부')
+    if (insideRows.length === 0) return
+    if (!confirm(`현재 내부 인원 ${insideRows.length}명을 전원 퇴장 처리하시겠습니까?`)) return
+    await Promise.all(
+      insideRows.map(r => supabase.from('scan_logs').insert({ event_id: id, barcode: r.barcode, scan_type: '퇴장' }))
+    )
+    loadData()
+  }
+
   async function downloadExcel() {
     setDownloading(true)
     try {
@@ -242,23 +257,33 @@ export default function ParticipantsPage() {
 
       {/* 현황 카드 */}
       {!loading && participants.length > 0 && (
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-800">{participants.length}</div>
-            <div className="text-xs text-gray-500 mt-1">전체</div>
+        <div className="mb-6">
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold text-gray-800">{participants.length}</div>
+              <div className="text-xs text-gray-500 mt-1">전체</div>
+            </div>
+            <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
+              <div className="text-2xl font-bold text-green-700">{rows.filter(r => r.status === '내부').length}</div>
+              <div className="text-xs text-green-600 mt-1">현재 내부</div>
+            </div>
+            <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
+              <div className="text-2xl font-bold text-red-600">{rows.filter(r => r.status === '외부').length}</div>
+              <div className="text-xs text-red-500 mt-1">외부</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+              <div className="text-2xl font-bold text-gray-500">{rows.filter(r => r.status === '미입장').length}</div>
+              <div className="text-xs text-gray-400 mt-1">미입장</div>
+            </div>
           </div>
-          <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
-            <div className="text-2xl font-bold text-green-700">{rows.filter(r => r.status === '내부').length}</div>
-            <div className="text-xs text-green-600 mt-1">현재 내부</div>
-          </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">{rows.filter(r => r.status === '외부').length}</div>
-            <div className="text-xs text-red-500 mt-1">외부</div>
-          </div>
-          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-500">{rows.filter(r => r.status === '미입장').length}</div>
-            <div className="text-xs text-gray-400 mt-1">미입장</div>
-          </div>
+          {rows.filter(r => r.status === '내부').length > 0 && (
+            <button
+              onClick={forceExitAll}
+              className="w-full bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-red-700"
+            >
+              내부 인원 전체 퇴장 처리 ({rows.filter(r => r.status === '내부').length}명)
+            </button>
+          )}
         </div>
       )}
 
@@ -401,6 +426,9 @@ export default function ParticipantsPage() {
                     </td>
                     <td className="px-3 py-2 text-right text-gray-400 text-xs">{r.scan_count}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {r.status === '내부' && (
+                        <button onClick={() => forceExit(r.barcode)} className="text-xs text-orange-500 hover:text-orange-700 mr-2">퇴장</button>
+                      )}
                       <button onClick={() => startEdit(r)} className="text-xs text-blue-500 hover:text-blue-700 mr-2">수정</button>
                       <button onClick={() => deleteParticipant(r.id, r.barcode)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
                     </td>
