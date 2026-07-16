@@ -337,6 +337,7 @@ export default function ParticipantsPage() {
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">번호</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">이름</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">소속</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">바코드</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">현재상태</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">최초입장</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500">최종퇴장</th>
@@ -352,6 +353,7 @@ export default function ParticipantsPage() {
                     <td className="px-3 py-2 text-gray-500">{r.number}</td>
                     <td className="px-3 py-2 font-medium text-gray-900">{r.name}</td>
                     <td className="px-3 py-2 text-gray-600 text-xs">{r.organization}</td>
+                    <td className="px-3 py-2 text-gray-400 font-mono text-xs">{r.barcode}</td>
                     <td className="px-3 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[r.status]}`}>
                         {r.status}
@@ -360,10 +362,10 @@ export default function ParticipantsPage() {
                     <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.first_entry)}</td>
                     <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.last_exit)}</td>
                     <td className="px-3 py-2 text-right font-medium text-gray-700 text-xs">
-                      {r.status === '미입장' ? '-' : minutesToHHMM(r.inside_minutes)}
+                      {r.status === '미입장' ? '-' : r.inside_minutes > 0 ? minutesToHHMM(r.inside_minutes) : '0분'}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
-                      {r.status === '미입장' ? '-' : minutesToHHMM(r.outside_minutes)}
+                      {r.outside_minutes > 0 ? minutesToHHMM(r.outside_minutes) : '-'}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-400 text-xs">{r.scan_count}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">

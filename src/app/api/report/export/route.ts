@@ -132,8 +132,8 @@ export async function GET(req: NextRequest) {
       status: r.status,
       first_entry: fmt(r.first_entry),
       last_exit: fmt(r.last_exit),
-      inside: r.status === '미입장' ? '-' : minutesToHHMM(r.inside_minutes),
-      outside: r.status === '미입장' ? '-' : minutesToHHMM(r.outside_minutes),
+      inside: r.status === '미입장' ? '-' : r.inside_minutes > 0 ? minutesToHHMM(r.inside_minutes) : '0:00',
+      outside: r.outside_minutes > 0 ? minutesToHHMM(r.outside_minutes) : '-',
       scan_count: r.scan_count,
     })
   })
