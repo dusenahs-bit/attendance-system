@@ -158,15 +158,21 @@ export default function ParticipantsPage() {
     setEditId(null)
   }
 
-  async function deleteParticipant(pid: string) {
-    if (!confirm('이 참가자를 삭제하시겠습니까?')) return
-    await supabase.from('participants').delete().eq('id', pid)
+  async function deleteParticipant(pid: string, barcode: string) {
+    if (!confirm('이 참가자를 삭제하면 해당 참가자의 입장/퇴장 기록도 삭제됩니다. 계속하시겠습니까?')) return
+    await Promise.all([
+      supabase.from('participants').delete().eq('id', pid),
+      supabase.from('scan_logs').delete().eq('event_id', id).eq('barcode', barcode),
+    ])
     loadData()
   }
 
   async function clearParticipants() {
-    if (!confirm('참가자 명단을 모두 삭제하시겠습니까?')) return
-    await supabase.from('participants').delete().eq('event_id', id)
+    if (!confirm('참가자 명단과 모든 입장/퇴장 기록이 삭제됩니다. 계속하시겠습니까?')) return
+    await Promise.all([
+      supabase.from('participants').delete().eq('event_id', id),
+      supabase.from('scan_logs').delete().eq('event_id', id),
+    ])
     loadData()
   }
 
@@ -229,6 +235,28 @@ export default function ParticipantsPage() {
           </button>
         </div>
       </div>
+
+      {/* 현황 카드 */}
+      {!loading && participants.length > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-2xl font-bold text-gray-800">{participants.length}</div>
+            <div className="text-xs text-gray-500 mt-1">전체</div>
+          </div>
+          <div className="bg-green-50 rounded-xl border border-green-200 p-4 text-center">
+            <div className="text-2xl font-bold text-green-700">{rows.filter(r => r.status === '내부').length}</div>
+            <div className="text-xs text-green-600 mt-1">현재 내부</div>
+          </div>
+          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
+            <div className="text-2xl font-bold text-red-600">{rows.filter(r => r.status === '외부').length}</div>
+            <div className="text-xs text-red-500 mt-1">외부</div>
+          </div>
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-center">
+            <div className="text-2xl font-bold text-gray-500">{rows.filter(r => r.status === '미입장').length}</div>
+            <div className="text-xs text-gray-400 mt-1">미입장</div>
+          </div>
+        </div>
+      )}
 
       {/* 개별 추가/수정 폼 */}
       {showAddForm && (
@@ -370,7 +398,7 @@ export default function ParticipantsPage() {
                     <td className="px-3 py-2 text-right text-gray-400 text-xs">{r.scan_count}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <button onClick={() => startEdit(r)} className="text-xs text-blue-500 hover:text-blue-700 mr-2">수정</button>
-                      <button onClick={() => deleteParticipant(r.id)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
+                      <button onClick={() => deleteParticipant(r.id, r.barcode)} className="text-xs text-red-400 hover:text-red-600">삭제</button>
                     </td>
                   </tr>
                 ))}
