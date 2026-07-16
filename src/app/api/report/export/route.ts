@@ -29,11 +29,6 @@ function calcStats(pLogs: ScanLog[], now: Date = new Date()) {
     }
   }
 
-  // 현재 내부에 있는 경우 지금까지의 시간도 포함
-  if (entry_time !== null) {
-    inside_ms += now.getTime() - entry_time.getTime()
-  }
-
   const lastLog = pLogs[pLogs.length - 1]
   const status = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
 
@@ -137,8 +132,8 @@ export async function GET(req: NextRequest) {
       status: r.status,
       first_entry: fmt(r.first_entry),
       last_exit: fmt(r.last_exit),
-      inside: r.inside_minutes > 0 ? minutesToHHMM(r.inside_minutes) : '-',
-      outside: r.outside_minutes > 0 ? minutesToHHMM(r.outside_minutes) : '-',
+      inside: r.status === '미입장' ? '-' : minutesToHHMM(r.inside_minutes),
+      outside: r.status === '미입장' ? '-' : minutesToHHMM(r.outside_minutes),
       scan_count: r.scan_count,
     })
   })

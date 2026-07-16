@@ -118,9 +118,6 @@ export default function EventDashboard() {
         <Link href={`/events/${id}/participants`} className="flex-1 text-center bg-gray-100 text-gray-700 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-200">
           참가자 관리
         </Link>
-        <Link href={`/events/${id}/report`} className="flex-1 text-center bg-gray-100 text-gray-700 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-200">
-          체류시간 리포트
-        </Link>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">

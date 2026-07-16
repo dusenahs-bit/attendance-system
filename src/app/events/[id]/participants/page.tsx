@@ -35,11 +35,6 @@ function calcStats(pLogs: ScanLog[]) {
     }
   }
 
-  // 현재 내부에 있는 경우 지금까지의 시간도 포함
-  if (entry_time !== null) {
-    inside_ms += Date.now() - entry_time.getTime()
-  }
-
   const lastLog = pLogs[pLogs.length - 1]
   const status: '내부' | '외부' = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
   return {
@@ -365,10 +360,10 @@ export default function ParticipantsPage() {
                     <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.first_entry)}</td>
                     <td className="px-3 py-2 text-gray-500 text-xs">{fmtTime(r.last_exit)}</td>
                     <td className="px-3 py-2 text-right font-medium text-gray-700 text-xs">
-                      {r.inside_minutes > 0 ? minutesToHHMM(r.inside_minutes) : '-'}
+                      {r.status === '미입장' ? '-' : minutesToHHMM(r.inside_minutes)}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500 text-xs">
-                      {r.outside_minutes > 0 ? minutesToHHMM(r.outside_minutes) : '-'}
+                      {r.status === '미입장' ? '-' : minutesToHHMM(r.outside_minutes)}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-400 text-xs">{r.scan_count}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
