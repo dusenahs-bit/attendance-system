@@ -10,7 +10,7 @@ function minutesToHHMM(minutes: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `0:${String(m).padStart(2, '0')}`
 }
 
-function calcStats(pLogs: ScanLog[], now: Date) {
+function calcStats(pLogs: ScanLog[]) {
   let inside_ms = 0
   let outside_ms = 0
   let entry_time: Date | null = null
@@ -29,11 +29,9 @@ function calcStats(pLogs: ScanLog[], now: Date) {
     }
   }
 
+  // 현재 진행 중인 세션(퇴장 없음)은 계산하지 않음 — 시간이 무한 누적되는 문제 방지
   const lastLog = pLogs[pLogs.length - 1]
   const status = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
-  if (status === '내부' && entry_time) {
-    inside_ms += now.getTime() - entry_time.getTime()
-  }
 
   return {
     status,
@@ -90,7 +88,7 @@ export async function GET(req: NextRequest) {
     if (pLogs.length === 0) {
       reportRows.push({ number: p.number, name: p.name, organization: p.organization, barcode: p.barcode, status: '미입장', first_entry: null, last_exit: null, inside_minutes: 0, outside_minutes: 0, scan_count: 0 })
     } else {
-      reportRows.push({ number: p.number, name: p.name, organization: p.organization, barcode: p.barcode, ...calcStats(pLogs, now) })
+      reportRows.push({ number: p.number, name: p.name, organization: p.organization, barcode: p.barcode, ...calcStats(pLogs) })
     }
   })
 
@@ -98,7 +96,7 @@ export async function GET(req: NextRequest) {
   scannedBarcodes.forEach(barcode => {
     if (participantMap.has(barcode)) return // 이미 위에서 처리
     const pLogs = logs.filter(l => l.barcode === barcode)
-    reportRows.push({ number: '-', name: '미등록', organization: '', barcode, ...calcStats(pLogs, now) })
+    reportRows.push({ number: '-', name: '미등록', organization: '', barcode, ...calcStats(pLogs) })
   })
 
   // 엑셀 생성

@@ -41,8 +41,6 @@ export default function ReportPage() {
 
     const participants: Participant[] = participantsRes.data || []
     const logs: ScanLog[] = logsRes.data || []
-    const now = new Date()
-
     const result: ParticipantReport[] = participants.map(p => {
       const pLogs = logs.filter(l => l.barcode === p.barcode)
 
@@ -69,13 +67,9 @@ export default function ReportPage() {
         }
       }
 
-      // 현재 내부에 있다면 지금까지 시간 추가
+      // 진행 중인 세션은 계산 제외 (시간 무한 누적 방지)
       const lastLog = pLogs[pLogs.length - 1]
       const currentStatus: '내부' | '외부' = (lastLog.scan_type === '입장' || lastLog.scan_type === '재입장') ? '내부' : '외부'
-
-      if (currentStatus === '내부' && entry_time) {
-        inside_ms += now.getTime() - entry_time.getTime()
-      }
 
       return {
         number: p.number,
@@ -110,7 +104,6 @@ export default function ReportPage() {
           inside_ms += t.getTime() - entry_time.getTime(); entry_time = null
         }
       }
-      if (currentStatus === '내부' && entry_time) inside_ms += now.getTime() - entry_time.getTime()
       result.push({ number: '-', name: '미등록', organization: '', barcode, status: currentStatus, first_entry: pLogs.find(l => l.scan_type === '입장')?.scanned_at || null, last_exit: [...pLogs].reverse().find(l => l.scan_type === '퇴장')?.scanned_at || null, inside_minutes: Math.round(inside_ms/60000), outside_minutes: Math.round(outside_ms/60000), scan_count: pLogs.length })
     })
 
