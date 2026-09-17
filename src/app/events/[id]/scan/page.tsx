@@ -21,9 +21,13 @@ export default function ScanPage() {
   const [inputValue, setInputValue] = useState('')
   const [lastResult, setLastResult] = useState<ScanResult | null>(null)
   const [recentResults, setRecentResults] = useState<ScanResult[]>([])
-  const [processing, setProcessing] = useState(false)
+  const [queueSize, setQueueSize] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
+
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queueRef = useRef<string[]>([])
+  const processingRef = useRef(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -47,87 +51,95 @@ export default function ScanPage() {
     setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
-  const processScan = useCallback(async (barcode: string) => {
-    if (!barcode.trim() || processing) return
-    setProcessing(true)
+  // 큐에서 하나씩 꺼내 순서대로 처리
+  const processQueue = useCallback(async () => {
+    if (processingRef.current) return
+    if (queueRef.current.length === 0) return
 
-    try {
-      // 참가자 조회
-      const { data: participant } = await supabase
-        .from('participants')
-        .select('*')
-        .eq('event_id', id)
-        .eq('barcode', barcode.trim())
-        .single()
+    processingRef.current = true
+    setIsProcessing(true)
 
-      // 이전 스캔 이력 조회
-      const { data: prevLogs } = await supabase
-        .from('scan_logs')
-        .select('*')
-        .eq('event_id', id)
-        .eq('barcode', barcode.trim())
-        .order('scanned_at', { ascending: false })
-        .limit(1)
+    while (queueRef.current.length > 0) {
+      const barcode = queueRef.current.shift()!
+      setQueueSize(queueRef.current.length)
 
-      // 다음 scan_type 자동 결정
-      let scan_type: ScanType = '입장'
-      if (prevLogs && prevLogs.length > 0) {
-        const lastType = prevLogs[0].scan_type as ScanType
-        if (lastType === '입장' || lastType === '재입장') {
-          scan_type = '퇴장'
-        } else {
-          scan_type = '재입장'
+      try {
+        const [{ data: participant }, { data: prevLogs }] = await Promise.all([
+          supabase.from('participants').select('*').eq('event_id', id).eq('barcode', barcode).single(),
+          supabase.from('scan_logs').select('scan_type').eq('event_id', id).eq('barcode', barcode)
+            .order('scanned_at', { ascending: false }).limit(1),
+        ])
+
+        let scan_type: ScanType = '입장'
+        if (prevLogs && prevLogs.length > 0) {
+          const lastType = prevLogs[0].scan_type as ScanType
+          scan_type = (lastType === '입장' || lastType === '재입장') ? '퇴장' : '재입장'
         }
+
+        const { data: newLog } = await supabase
+          .from('scan_logs')
+          .insert({ event_id: id, barcode, scan_type })
+          .select()
+          .single()
+
+        const result: ScanResult = {
+          barcode,
+          name: participant?.name || '미등록 참가자',
+          organization: participant?.organization || '',
+          scan_type,
+          scanned_at: newLog?.scanned_at || new Date().toISOString(),
+          found: !!participant,
+        }
+
+        setLastResult(result)
+        setRecentResults(prev => [result, ...prev.slice(0, 9)])
+      } catch {
+        // 개별 스캔 실패 시 다음으로 진행
       }
-
-      // 스캔 기록 저장
-      const { data: newLog } = await supabase
-        .from('scan_logs')
-        .insert({ event_id: id, barcode: barcode.trim(), scan_type })
-        .select()
-        .single()
-
-      const result: ScanResult = {
-        barcode: barcode.trim(),
-        name: participant?.name || '미등록 참가자',
-        organization: participant?.organization || '',
-        scan_type,
-        scanned_at: newLog?.scanned_at || new Date().toISOString(),
-        found: !!participant,
-      }
-
-      setLastResult(result)
-      setRecentResults(prev => [result, ...prev.slice(0, 9)])
-    } finally {
-      setProcessing(false)
-      setInputValue('')
-      inputRef.current?.focus()
     }
-  }, [id, processing])
+
+    processingRef.current = false
+    setIsProcessing(false)
+    setQueueSize(0)
+    inputRef.current?.focus()
+  }, [id])
+
+  // 바코드를 큐에 추가하고 처리 시작
+  const enqueue = useCallback((barcode: string) => {
+    const trimmed = barcode.trim()
+    if (!trimmed) return
+    queueRef.current.push(trimmed)
+    setQueueSize(queueRef.current.length)
+    setInputValue('')
+    processQueue()
+  }, [processQueue])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setInputValue(val)
-    // 입력이 멈추면 150ms 후 자동 처리 (스캐너는 한 번에 빠르게 입력됨)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (val.trim()) {
-      debounceRef.current = setTimeout(() => {
-        processScan(val)
-      }, 150)
+      debounceRef.current = setTimeout(() => enqueue(val), 150)
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      processScan(inputValue)
+      enqueue(inputValue)
     }
   }
 
-  const scanTypeStyle: Record<ScanType, { bg: string; text: string; border: string }> = {
-    '입장': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
-    '퇴장': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
-    '재입장': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  const scanTypeStyle: Record<ScanType, string> = {
+    '입장': 'bg-green-600',
+    '퇴장': 'bg-red-600',
+    '재입장': 'bg-blue-600',
+  }
+
+  const cardBg: Record<ScanType, string> = {
+    '입장': 'bg-green-50 border-green-300',
+    '퇴장': 'bg-red-50 border-red-300',
+    '재입장': 'bg-blue-50 border-blue-300',
   }
 
   return (
@@ -141,9 +153,14 @@ export default function ScanPage() {
 
       {/* 스캔 입력 */}
       <div className="bg-white rounded-xl shadow-sm border-2 border-blue-300 p-6 mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          바코드 스캔
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700">바코드 스캔</label>
+          {(isProcessing || queueSize > 0) && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+              {queueSize > 0 ? `대기 ${queueSize}명` : '처리 중...'}
+            </span>
+          )}
+        </div>
         <input
           ref={inputRef}
           type="text"
@@ -151,8 +168,7 @@ export default function ScanPage() {
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          disabled={processing}
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="바코드를 스캔하세요..."
           autoComplete="off"
         />
@@ -161,11 +177,7 @@ export default function ScanPage() {
 
       {/* 마지막 스캔 결과 */}
       {lastResult && (
-        <div className={`rounded-xl border-2 p-5 mb-4 ${
-          !lastResult.found
-            ? 'bg-yellow-50 border-yellow-300'
-            : scanTypeStyle[lastResult.scan_type].bg + ' border-' + (lastResult.scan_type === '입장' ? 'green' : lastResult.scan_type === '퇴장' ? 'red' : 'blue') + '-300'
-        }`}>
+        <div className={`rounded-xl border-2 p-5 mb-4 ${!lastResult.found ? 'bg-yellow-50 border-yellow-300' : cardBg[lastResult.scan_type]}`}>
           <div className="flex items-start justify-between">
             <div>
               <div className="text-2xl font-bold text-gray-900">{lastResult.name}</div>
@@ -174,11 +186,7 @@ export default function ScanPage() {
               )}
               <div className="text-xs text-gray-400 mt-1">{lastResult.barcode}</div>
             </div>
-            <div className={`text-lg font-bold px-3 py-1 rounded-full ${
-              lastResult.scan_type === '입장' ? 'bg-green-600 text-white' :
-              lastResult.scan_type === '퇴장' ? 'bg-red-600 text-white' :
-              'bg-blue-600 text-white'
-            }`}>
+            <div className={`text-lg font-bold px-3 py-1 rounded-full text-white ${scanTypeStyle[lastResult.scan_type]}`}>
               {lastResult.scan_type}
             </div>
           </div>
