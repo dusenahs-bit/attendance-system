@@ -23,6 +23,7 @@ export default function ScanPage() {
   const [recentResults, setRecentResults] = useState<ScanResult[]>([])
   const [processing, setProcessing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -104,8 +105,21 @@ export default function ScanPage() {
     }
   }, [id, processing])
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setInputValue(val)
+    // 입력이 멈추면 150ms 후 자동 처리 (스캐너는 한 번에 빠르게 입력됨)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (val.trim()) {
+      debounceRef.current = setTimeout(() => {
+        processScan(val)
+      }, 150)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
       processScan(inputValue)
     }
   }
@@ -128,13 +142,13 @@ export default function ScanPage() {
       {/* 스캔 입력 */}
       <div className="bg-white rounded-xl shadow-sm border-2 border-blue-300 p-6 mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          바코드 스캔 (Enter로 확인)
+          바코드 스캔
         </label>
         <input
           ref={inputRef}
           type="text"
           value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           disabled={processing}
